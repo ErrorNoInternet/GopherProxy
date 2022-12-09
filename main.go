@@ -32,6 +32,9 @@ func getFingerprint(request *http.Request) string {
 			fingerprint = request.RemoteAddr
 		}
 	}
+	if strings.Contains(fingerprint, ":") {
+		fingerprint = strings.Split(fingerprint, ":")[0]
+	}
 	fingerprint += request.Header.Get("User-Agent")
 	fingerprint = strconv.FormatUint(xxh3.HashString(fingerprint), 10)
 	return fingerprint
