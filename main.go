@@ -93,7 +93,10 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 		fmt.Fprintf(writer, "<!DOCTYPE html><meta http-equiv=\"Refresh\" content=\"0; url='/__gopherproxy__'\"/>")
 		return
 	}
-	url := parsedUrl.Scheme + "://" + parsedUrl.Host + request.URL.Path + "?" + request.URL.RawQuery
+	url := parsedUrl.Scheme + "://" + parsedUrl.Host + request.URL.Path
+	if request.URL.RawQuery != "" {
+		url += "?" + request.URL.RawQuery
+	}
 	if len(url) > 6969 {
 		fmt.Fprintf(writer, "Don't try to exploit me!")
 		return
