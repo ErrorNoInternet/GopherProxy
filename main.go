@@ -10,9 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zeebo/xxh3"
 )
 
 var (
@@ -22,20 +25,21 @@ var (
 )
 
 func getFingerprint(request *http.Request) string {
-	ip := request.RemoteAddr
-	if strings.HasPrefix(ip, "172.31") {
-		ip = request.Header.Get("X-Forwarded-For")
-		if ip == "" {
-			ip = request.RemoteAddr
+	fingerprint := request.RemoteAddr
+	if strings.HasPrefix(fingerprint, "172.31") {
+		fingerprint = request.Header.Get("X-Forwarded-For")
+		if fingerprint == "" {
+			fingerprint = request.RemoteAddr
 		}
 	}
-	ip += request.Header.Get("User-Agent")
-	return ip
+	fingerprint += request.Header.Get("User-Agent")
+	fingerprint = strconv.FormatUint(xxh3.HashString(fingerprint), 10)
+	return fingerprint
 }
 
-func getCounter(ip string) int {
+func getCounter(fingerprint string) int {
 	mapMutex.Lock()
-	counter, ok := ratelimits[ip]
+	counter, ok := ratelimits[fingerprint]
 	mapMutex.Unlock()
 	if !ok {
 		return 0
@@ -43,9 +47,9 @@ func getCounter(ip string) int {
 	return counter
 }
 
-func setCounter(ip string, counter int) {
+func setCounter(fingerprint string, counter int) {
 	mapMutex.Lock()
-	ratelimits[ip] = counter
+	ratelimits[fingerprint] = counter
 	mapMutex.Unlock()
 }
 
@@ -69,9 +73,9 @@ func handleClient(writer http.ResponseWriter, request *http.Request) {
 			return
 		}
 
-		ip := strings.Split(getFingerprint(request), ":")[0]
-		clientFingerprints[ip] = parsedUrl
-		fmt.Printf("%v is now assigned to %v\n", ip, parsedUrl)
+		fingerprint := strings.Split(getFingerprint(request), ":")[0]
+		clientFingerprints[fingerprint] = parsedUrl
+		fmt.Printf("%v is now assigned to %v\n", fingerprint, parsedUrl)
 		fmt.Fprintf(writer, "<!DOCTYPE html><meta http-equiv=\"Refresh\" content=\"0; url='/'\"/>")
 	}
 }
@@ -79,12 +83,12 @@ func handleClient(writer http.ResponseWriter, request *http.Request) {
 func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 	session := rand.Intn(int(math.Pow(2, 31)))
 
-	ip := strings.Split(getFingerprint(request), ":")[0]
-	for getCounter(ip) >= 30 {
+	fingerprint := strings.Split(getFingerprint(request), ":")[0]
+	for getCounter(fingerprint) >= 30 {
 		time.Sleep(1 * time.Second)
 	}
-	setCounter(ip, getCounter(ip)+1)
-	parsedUrl, ok := clientFingerprints[ip]
+	setCounter(fingerprint, getCounter(fingerprint)+1)
+	parsedUrl, ok := clientFingerprints[fingerprint]
 	if !ok {
 		fmt.Fprintf(writer, "<!DOCTYPE html><meta http-equiv=\"Refresh\" content=\"0; url='/__gopherproxy__'\"/>")
 		return
@@ -94,7 +98,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 		fmt.Fprintf(writer, "Don't try to exploit me!")
 		return
 	}
-	fmt.Printf("[%v] %v is sending a %v request to %v...\n", session, ip, request.Method, url)
+	fmt.Printf("[%v] %v is sending a %v request to %v...\n", session, fingerprint, request.Method, url)
 
 	client := http.Client{}
 	newRequest, _ := http.NewRequest(request.Method, url, request.Body)
@@ -179,11 +183,11 @@ func cleanup() {
 	for {
 		time.Sleep(500 * time.Millisecond)
 		mapMutex.Lock()
-		for ip, ratelimit := range ratelimits {
+		for fingerprint, ratelimit := range ratelimits {
 			if ratelimit == 0 {
-				delete(ratelimits, ip)
+				delete(ratelimits, fingerprint)
 			} else {
-				ratelimits[ip] = ratelimit - 1
+				ratelimits[fingerprint] = ratelimit - 1
 			}
 		}
 		mapMutex.Unlock()
