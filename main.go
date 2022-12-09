@@ -87,7 +87,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 	session := rand.Intn(int(math.Pow(2, 31)))
 
 	fingerprint := strings.Split(getFingerprint(request), ":")[0]
-	for getCounter(fingerprint) >= 30 {
+	for getCounter(fingerprint) >= 60 {
 		time.Sleep(1 * time.Second)
 	}
 	setCounter(fingerprint, getCounter(fingerprint)+1)
