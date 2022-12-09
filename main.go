@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -15,10 +16,22 @@ import (
 )
 
 var (
-	mapMutex        *sync.Mutex
-	ratelimits      map[string]int
-	clientAddresses map[string]*url.URL
+	mapMutex           *sync.Mutex
+	ratelimits         map[string]int
+	clientFingerprints map[string]*url.URL
 )
+
+func getFingerprint(request *http.Request) string {
+	ip := request.RemoteAddr
+	if strings.HasPrefix(ip, "172.31") {
+		ip = request.Header.Get("X-Forwarded-For")
+		if ip == "" {
+			ip = request.RemoteAddr
+		}
+	}
+	ip += request.Header.Get("User-Agent")
+	return ip
+}
 
 func getCounter(ip string) int {
 	mapMutex.Lock()
@@ -56,8 +69,8 @@ func handleClient(writer http.ResponseWriter, request *http.Request) {
 			return
 		}
 
-		ip := strings.Split(request.RemoteAddr, ":")[0]
-		clientAddresses[ip] = parsedUrl
+		ip := strings.Split(getFingerprint(request), ":")[0]
+		clientFingerprints[ip] = parsedUrl
 		fmt.Printf("%v is now assigned to %v\n", ip, parsedUrl)
 		fmt.Fprintf(writer, "<!DOCTYPE html><meta http-equiv=\"Refresh\" content=\"0; url='/'\"/>")
 	}
@@ -66,17 +79,17 @@ func handleClient(writer http.ResponseWriter, request *http.Request) {
 func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 	session := rand.Intn(int(math.Pow(2, 31)))
 
-	ip := strings.Split(request.RemoteAddr, ":")[0]
-	for getCounter(ip) >= 25 {
+	ip := strings.Split(getFingerprint(request), ":")[0]
+	for getCounter(ip) >= 30 {
 		time.Sleep(1 * time.Second)
 	}
 	setCounter(ip, getCounter(ip)+1)
-	parsedUrl, ok := clientAddresses[ip]
+	parsedUrl, ok := clientFingerprints[ip]
 	if !ok {
 		fmt.Fprintf(writer, "<!DOCTYPE html><meta http-equiv=\"Refresh\" content=\"0; url='/__gopherproxy__'\"/>")
 		return
 	}
-	url := parsedUrl.String() + request.URL.Path
+	url := parsedUrl.Scheme + "://" + parsedUrl.Host + request.URL.Path + "?" + request.URL.RawQuery
 	if len(url) > 6969 {
 		fmt.Fprintf(writer, "Don't try to exploit me!")
 		return
@@ -84,11 +97,11 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 	fmt.Printf("[%v] %v is sending a %v request to %v...\n", session, ip, request.Method, url)
 
 	client := http.Client{}
-	newRequest, _ := http.NewRequest(request.Method, url, nil)
+	newRequest, _ := http.NewRequest(request.Method, url, request.Body)
 	newRequest.Header.Add("Handled-By", "GopherProxy")
 	for key, value := range request.Header {
 		key = strings.ToLower(key)
-		if key == "origin" || key == "referer" {
+		if key == "accept-encoding" || key == "content-length" || key == "origin" || key == "referer" || key == "cookie" {
 			continue
 		}
 		if key == "host" {
@@ -123,10 +136,11 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 		total := 0
 		for {
 			read, readErr := reader.Read(buffer)
+			modifiedBuffer := bytes.ReplaceAll(buffer[:read], []byte(parsedUrl.Host), []byte(os.Getenv("URL")))
 
 			total += read
-			fmt.Printf("[%v] Read %v bytes from server (%v total)\n", session, read, total)
-			_, err = writer.Write(buffer[:read])
+			fmt.Printf("[%v] Forwarding %v bytes from server (%v total)\n", session, read, total)
+			_, err = writer.Write(modifiedBuffer)
 			if err != nil {
 				fmt.Printf("[%v] Disconnecting from client: %v\n", session, err)
 				break
@@ -145,7 +159,7 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	mapMutex = &sync.Mutex{}
 	ratelimits = make(map[string]int)
-	clientAddresses = make(map[string]*url.URL)
+	clientFingerprints = make(map[string]*url.URL)
 	go cleanup()
 
 	http.HandleFunc("/__gopherproxy__", handleClient)
@@ -163,7 +177,7 @@ func main() {
 
 func cleanup() {
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 		mapMutex.Lock()
 		for ip, ratelimit := range ratelimits {
 			if ratelimit == 0 {
