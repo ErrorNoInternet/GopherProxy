@@ -55,7 +55,7 @@ func setCounter(fingerprint string, counter int) {
 
 func handleClient(writer http.ResponseWriter, request *http.Request) {
 	if request.Method == "GET" {
-		fmt.Fprintf(writer, "<!DOCTYPE html><form action=\"/__gopherproxy__\" method=\"POST\"><label for=\"url\">URL </label><input id=\"url\" name=\"url\"></input><input type=\"submit\" value=\"Visit\"></form>")
+		fmt.Fprintf(writer, "<!DOCTYPE html><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><form action=\"/__gopherproxy__\" method=\"POST\"><label for=\"url\">URL </label><input id=\"url\" name=\"url\"></input><input type=\"submit\" value=\"Visit\"></form>")
 	} else if request.Method == "POST" {
 		rawUrl, err := ioutil.ReadAll(request.Body)
 		if err != nil {
