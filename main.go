@@ -30,6 +30,10 @@ func getFingerprint(request *http.Request) string {
 		fingerprint = request.Header.Get("X-Forwarded-For")
 		if fingerprint == "" {
 			fingerprint = request.RemoteAddr
+		} else {
+			if strings.Contains(fingerprint, ",") {
+				fingerprint = strings.Split(fingerprint, ",")[0]
+			}
 		}
 	}
 	if strings.Contains(fingerprint, ":") {
