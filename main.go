@@ -108,7 +108,6 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 
 	client := http.Client{}
 	newRequest, _ := http.NewRequest(request.Method, url, request.Body)
-	newRequest.Header.Add("Handled-By", "GopherProxy")
 	for key, value := range request.Header {
 		key = strings.ToLower(key)
 		if key == "accept-encoding" || key == "content-length" || key == "origin" || key == "referer" || key == "cookie" {
@@ -126,6 +125,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
+	writer.Header().Add("Handled-By", "GopherProxy")
 	for key, value := range response.Header {
 		key = strings.ToLower(key)
 		if key == "handled-by" && value[0] == "GopherProxy" {
