@@ -114,7 +114,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 	newRequest, _ := http.NewRequest(request.Method, url, request.Body)
 	for key, value := range request.Header {
 		key = strings.ToLower(key)
-		if key == "accept-encoding" || key == "content-length" || key == "origin" || key == "referer" {
+		if key == "accept-encoding" || key == "content-length" || key == "origin" || key == "referer" || key == "cookie" {
 			continue
 		}
 		if key == "host" {
@@ -136,7 +136,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 			fmt.Fprintf(writer, "Don't try to exploit me!")
 			return
 		}
-		if key == "content-length" {
+		if key == "content-length" || key == "set-cookie" {
 			continue
 		}
 		writer.Header().Add(key, value[0])
