@@ -1,2 +1,2 @@
 # WikiProxy
-WikiProxy is a fork of GopherProxy, but made only for Wikipedia
+WikiProxy is a branch of GopherProxy, but made only for Wikipedia
