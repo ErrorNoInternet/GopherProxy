@@ -1,4 +1,4 @@
-module ryan/gopherproxy
+module ryan/wikiproxy
 
 go 1.19
 
