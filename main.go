@@ -4,11 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,9 +17,8 @@ import (
 )
 
 var (
-	mapMutex           *sync.Mutex
-	ratelimits         map[string]int
-	clientFingerprints map[string]*url.URL
+	mapMutex   *sync.Mutex
+	ratelimits map[string]int
 )
 
 func getFingerprint(request *http.Request) string {
@@ -60,33 +57,6 @@ func setCounter(fingerprint string, counter int) {
 	mapMutex.Unlock()
 }
 
-func handleClient(writer http.ResponseWriter, request *http.Request) {
-	if request.Method == "GET" {
-		fmt.Fprintf(writer, "<!DOCTYPE html><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><form action=\"/__gopherproxy__\" method=\"POST\"><label for=\"url\">URL </label><input id=\"url\" name=\"url\"></input><input type=\"submit\" value=\"Visit\"></form>")
-	} else if request.Method == "POST" {
-		rawUrl, err := ioutil.ReadAll(request.Body)
-		if err != nil {
-			fmt.Fprintf(writer, err.Error())
-			return
-		}
-		decodedUrl, err := url.QueryUnescape(strings.TrimPrefix(string(rawUrl), "url="))
-		if err != nil {
-			fmt.Fprintf(writer, err.Error())
-			return
-		}
-		parsedUrl, err := url.Parse(strings.TrimSuffix(decodedUrl, "/"))
-		if err != nil {
-			fmt.Fprintf(writer, err.Error())
-			return
-		}
-
-		fingerprint := strings.Split(getFingerprint(request), ":")[0]
-		clientFingerprints[fingerprint] = parsedUrl
-		fmt.Printf("%v is now assigned to %v\n", fingerprint, parsedUrl)
-		fmt.Fprintf(writer, "<!DOCTYPE html><meta http-equiv=\"Refresh\" content=\"0; url='/'\"/>")
-	}
-}
-
 func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 	session := rand.Intn(int(math.Pow(2, 31)))
 
@@ -95,12 +65,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 		time.Sleep(1 * time.Second)
 	}
 	setCounter(fingerprint, getCounter(fingerprint)+1)
-	parsedUrl, ok := clientFingerprints[fingerprint]
-	if !ok {
-		fmt.Fprintf(writer, "<!DOCTYPE html><meta http-equiv=\"Refresh\" content=\"0; url='/__gopherproxy__'\"/>")
-		return
-	}
-	url := parsedUrl.Scheme + "://" + parsedUrl.Host + request.URL.Path
+	url := "https://en.wikipedia.org/" + request.URL.Path
 	if request.URL.RawQuery != "" {
 		url += "?" + request.URL.RawQuery
 	}
@@ -118,7 +83,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 			continue
 		}
 		if key == "host" {
-			newRequest.Header.Add(key, parsedUrl.Host)
+			newRequest.Header.Add(key, "en.wikipedia.org")
 		} else {
 			newRequest.Header.Add(key, value[0])
 		}
@@ -146,11 +111,12 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 		return
 	} else {
 		reader := bufio.NewReader(response.Body)
-		buffer := make([]byte, 1024*1024)
+		buffer := make([]byte, 1024*512)
 		total := 0
 		for {
 			read, readErr := reader.Read(buffer)
-			modifiedBuffer := bytes.ReplaceAll(buffer[:read], []byte(parsedUrl.Host), []byte(os.Getenv("URL")))
+			modifiedBuffer := bytes.ReplaceAll(buffer[:read], []byte("en.wikipedia.org"), []byte(os.Getenv("URL")))
+			modifiedBuffer = bytes.ReplaceAll(modifiedBuffer, []byte("upload.wikimedia.org"), []byte("downloadserver.errornointernet.repl.co/https://upload.wikimedia.org"))
 
 			total += read
 			fmt.Printf("[%v] Forwarding %v bytes from server (%v total)\n", session, read, total)
@@ -173,10 +139,8 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	mapMutex = &sync.Mutex{}
 	ratelimits = make(map[string]int)
-	clientFingerprints = make(map[string]*url.URL)
 	go cleanup()
 
-	http.HandleFunc("/__gopherproxy__", handleClient)
 	http.HandleFunc("/", proxyRequest)
 
 	port := os.Getenv("PORT")
