@@ -117,6 +117,7 @@ func proxyRequest(writer http.ResponseWriter, request *http.Request) {
 			read, readErr := reader.Read(buffer)
 			modifiedBuffer := bytes.ReplaceAll(buffer[:read], []byte("en.wikipedia.org"), []byte(os.Getenv("URL")))
 			modifiedBuffer = bytes.ReplaceAll(modifiedBuffer, []byte("upload.wikimedia.org"), []byte("downloadserver.errornointernet.repl.co/https://upload.wikimedia.org"))
+			modifiedBuffer = bytes.ReplaceAll(modifiedBuffer, []byte("commons.wikimedia.org"), []byte("downloadserver.errornointernet.repl.co/https://commons.wikimedia.org"))
 
 			total += read
 			fmt.Printf("[%v] Forwarding %v bytes from server (%v total)\n", session, read, total)
